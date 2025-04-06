@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const csv = require('csv-parse');
 const { log } = require('console');
-
+const CheckFHE = require('./checkFHE');
 // 配置
 const CONFIG = {
     proxy: 'http://127.0.0.1:7890',
@@ -32,6 +32,11 @@ const ACTIONS = {
         name: '领取奖励',
         action: 'claimReward',
         description: '领取当前可用的奖励'
+    },
+    4: {
+        name: '检查FHE',
+        action: 'checkFHE',
+        description: '检查当前可领取的FHE'
     }
 };
 
@@ -77,6 +82,20 @@ function createHumanityInstance(wallet, proxy) {
     );
 }
 
+function createCheckFHEInstance(wallet, proxy) {
+    const provider = new ethers.JsonRpcProvider('https://rpc.testnet.humanity.org');
+    const signer = new ethers.Wallet(wallet.privateKey, provider);
+    return new CheckFHE(
+        {
+            address: wallet.address,
+            privateKey: wallet.privateKey,
+            signer: signer,
+            sendTransaction: async (tx) => await signer.sendTransaction(tx)
+        },
+        proxy
+    );
+}
+
 // 执行单个任务
 async function executeTask(wallet, action, config, retryCount = 0) {
     try {
@@ -110,6 +129,17 @@ async function executeTask(wallet, action, config, retryCount = 0) {
                     address: wallet.address, 
                     txHash: tx.hash,
                     message: `地址 ${wallet.address} 领取奖励成功: ${tx.hash}`
+                };
+
+            case 'checkFHE':
+                const checkFHEInstance = createCheckFHEInstance(wallet, config.proxy);
+                const fheResult = await checkFHEInstance.checkFHE();
+                return {
+                    success: true,
+                    address: wallet.address,
+                    eligible: fheResult.eligible,
+                    amount: fheResult.amount.toString(),
+                    message: `地址 ${wallet.address} ${fheResult.message}`
                 };
             
             default:
@@ -232,7 +262,7 @@ async function main() {
             console.log(`${key}. ${value.name} - ${value.description}`);
         });
 
-        const action = await new Promise(resolve => rl.question('\n请输入操作编号(1-3): ', resolve));
+        const action = await new Promise(resolve => rl.question('\n请输入操作编号(1-4): ', resolve));
         if (!ACTIONS[action]) {
             throw new Error('无效的操作编号');
         }
